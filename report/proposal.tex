@@ -1,0 +1,67 @@
+\documentclass[twoside,11pt]{article}
+
+\usepackage{aa228-jmlr2e}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{lipsum}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{cleveref}
+\usepackage{subcaption}
+
+\begin{document}
+
+% More details can be found here: https://aa228.stanford.edu/final-project/
+\title{Final Project Proposal: Risk-Aware Scientific Exploration on Mars}
+\newcommand{\shorttitle}{Risk-Aware Mars Rover Exploration}
+
+%===========================================
+% Authors
+%===========================================
+\name{Nicole Wong}
+\email{nicolew6@stanford.edu}
+
+\name{Tamir Ovadia}
+\email{tamiro@stanford.edu}
+
+\maketitle
+
+\section{Goal}
+Our project investigates how an autonomous Mars rover can maximize scientific discoveries while managing terrain risk and limited onboard resources. Rather than simply following a predetermined path to scientific targets, the rover must decide which regions to explore, whether additional measurements are worth their cost, and when continued exploration is too risky. We envision a partially mapped environment with potentially valuable sampling sites, uncertain terrain conditions, and a finite battery budget.
+
+Our goal is to develop and evaluate a \emph{risk-aware exploration policy} that balances expected scientific value against energy use and the probability of mission failure. Success would mean achieving a better science--safety tradeoff than simple baseline strategies across simulated missions. To keep the project tractable, our core system uses a single rover and a simplified motion model, leaving high-fidelity vehicle dynamics and multi-rover coordination outside the initial scope, but as possible extension routes. 
+
+\section{Decision Making}
+This is a sequential decision-making problem: each action changes the rover's position and remaining resources, and new observations may change which future actions are desirable. For example, a scan might reveal a promising geological target, while detecting unsafe terrain could justify a longer, safer route. We propose a compact partially observable Markov decision process (POMDP), following the framework described in \citep{Kochenderfer2022}:
+\begin{itemize}
+    \item \textbf{States ($S$):} Rover position, remaining battery, explored or sampled locations, and the underlying scientific value and hazard level of relevant terrain cells.
+    \item \textbf{Actions ($A$):} Move to a neighboring cell, scan nearby terrain or a candidate target, and collect a sample. Returning to base is a sequence of movement decisions rather than a one-shot action.
+    \item \textbf{Transitions ($P(s'\mid s,a)$):} Actions consume time and energy; hazardous terrain may cause extra energy expenditure, delays, or immobilization. Sampling updates the set of remaining targets.
+    \item \textbf{Rewards ($R$):} Positive rewards for scientifically valuable samples, costs for time, sensing, and motion, and substantial penalties for mission failure or failing to return safely.
+    \item \textbf{Observations ($O$):} Noisy measurements suggesting terrain hazards or a site's scientific value. The rover updates beliefs about quantities it cannot observe directly.
+\end{itemize}
+
+\section{Sources of Uncertainty}
+We will focus on three interpretable uncertainties, with probabilities that can be varied in experiments:
+\begin{enumerate}
+    \item \textbf{Scientific value:} A site may be high- or low-value, but its class is initially hidden. Measurements provide imperfect evidence for Bayesian belief updates.
+    \item \textbf{Terrain risk:} Loose soil, steep regions, or other obstacles introduce uncertainty about traversal safety and energy cost. We can model these with a few hazard categories and stochastic outcomes.
+    \item \textbf{Sensor reliability:} Scans have nonzero false-positive and false-negative rates and consume resources, creating an information-gathering versus exploration tradeoff.
+\end{enumerate}
+
+\section{Sketches of Solution}
+\textbf{Core project.} We will implement a small 2D grid-world simulator (e.g., $8\times 8$ cells with several candidate scientific sites) and compare three policies: (1) a fixed or nearest-target exploration strategy, (2) a greedy expected-science-per-cost strategy, and (3) a risk-aware, belief-informed planner using short-horizon lookahead or simulation-based rollouts. We will evaluate many randomized missions using accumulated scientific reward, successful return rate, energy consumed, and performance sensitivity to sensor noise and hazard probability. This is a self-contained deliverable, from which, according to development, we can branch into advanced control methods.
+
+\textbf{Optional extension: Control Barrier Functions (CBFs).} If the core exploration results are completed early, we may add simplified continuous rover dynamics and a local CBF-based safety filter to adjust nominal motion commands near hazardous terrain. We could then study whether the safety filter improves mission outcomes under explicitly stated disturbance assumptions. The CBF component is supplementary; the project's main contribution remains sequential, risk-aware scientific exploration.
+
+
+\section{AI Disclosure}
+We used LLMs including ChatGPT and Gemini to brainstorm ideas and extensions and also discuss the feasibility/scope of the project.
+
+
+% References
+\bibliography{references}
+
+\end{document}
+
+
