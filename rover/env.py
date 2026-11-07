@@ -6,7 +6,12 @@ The core model is classic RockSample(n, k):
   * CHECK_i returns a noisy good/bad reading whose accuracy decays with distance:
         eta = 2^(-d / d0),  P(correct reading) = (1 + eta) / 2;
   * sampling a good rock gives +10 (and the rock becomes bad), a bad rock -10;
-  * moving east off the grid ends the episode with +10 ("return to base").
+  * moving east off the grid ends the episode with +10 ("return to base");
+  * illegal actions (bumping a N/S/W wall, sampling an empty cell) give -100 and
+    end the episode, as in the RockSample_7_8 model distributed with SARSOP.
+
+The default config is the published RockSample(7,8) benchmark: 7x7 grid,
+8 rocks, start (0, 3), d0 = 20, discount 0.95.
 
 Project extensions (battery budget, terrain hazards, sensing costs) should be
 added on top of this model via `RoverConfig` fields so the plain RockSample
@@ -27,21 +32,24 @@ MOVES = {NORTH: (0, 1), SOUTH: (0, -1), EAST: (1, 0), WEST: (-1, 0)}
 OBS_NONE, OBS_GOOD, OBS_BAD = range(3)
 NUM_OBS = 3
 
-# Default 8x8 layout with 8 rocks. Swap for `random_layout(...)` or a
-# published layout when benchmarking.
-DEFAULT_ROCKS = ((1, 0), (0, 2), (3, 1), (6, 3), (2, 5), (4, 4), (5, 6), (1, 7))
+# Published RockSample(7,8) layout (Smith & Simmons, 2004), (x, y) with north = +y.
+# Matches third_party/sarsop/examples/POMDP/RockSample_7_8.pomdp.
+ROCKSAMPLE_7_8_ROCKS = ((2, 0), (0, 1), (3, 1), (6, 3), (2, 4), (3, 4), (5, 5), (1, 6))
+ROCKSAMPLE_7_8_START = (0, 3)
 
 
 @dataclass(frozen=True)
 class RoverConfig:
-    grid_size: int = 8
-    rocks: tuple[tuple[int, int], ...] = DEFAULT_ROCKS
-    start: tuple[int, int] = (0, 4)
+    grid_size: int = 7
+    rocks: tuple[tuple[int, int], ...] = ROCKSAMPLE_7_8_ROCKS
+    start: tuple[int, int] = ROCKSAMPLE_7_8_START
     sensor_half_eff_dist: float = 20.0  # d0 in eta = 2^(-d/d0)
     p_good: float = 0.5  # prior probability each rock is good
     good_reward: float = 10.0
-    bad_penalty: float = -10.0  # sampling a bad rock (or an empty cell)
+    bad_penalty: float = -10.0  # sampling a bad rock
     exit_reward: float = 10.0
+    illegal_penalty: float = -100.0  # bumping a wall or sampling an empty cell
+    illegal_terminates: bool = True
     step_cost: float = 0.0  # applied to every action
     check_cost: float = 0.0  # extra cost per CHECK action
     discount: float = 0.95
@@ -114,15 +122,22 @@ class RockSampleEnv:
                 return State(s.pos, s.rocks, terminal=True), r + self.cfg.exit_reward
             if 0 <= x < n and 0 <= y < n:
                 return State((x, y), s.rocks), r
-            return s, r  # bumped into a wall
+            return self._illegal(s, r)  # bumped into a wall
         if a == SAMPLE:
             i = self.rock_at(s.pos)
             if i is None:
-                return s, r + self.cfg.bad_penalty
+                return self._illegal(s, r)
             reward = self.cfg.good_reward if s.rocks[i] else self.cfg.bad_penalty
             rocks = s.rocks[:i] + (False,) + s.rocks[i + 1 :]
             return State(s.pos, rocks), r + reward
         return s, r - self.cfg.check_cost  # CHECK_i
+
+    def _illegal(self, s: State, r: float) -> tuple[State, float]:
+        return State(s.pos, s.rocks, terminal=self.cfg.illegal_terminates), r + self.cfg.illegal_penalty
+
+    def is_exit(self, s: State, a: int) -> bool:
+        """True if taking `a` in `s` leaves the grid to the east (returns to base)."""
+        return not s.terminal and a == EAST and s.pos[0] == self.cfg.grid_size - 1
 
     def observation_probs(self, a: int, sp: State) -> np.ndarray:
         """Distribution over observations after taking `a` and landing in `sp`."""

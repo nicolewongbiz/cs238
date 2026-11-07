@@ -25,18 +25,19 @@ def run_episode(env: RockSampleEnv, policy: Policy, rng: np.random.Generator) ->
     s = env.sample_initial_state(rng)
     b = RockBelief.initial(env)
     policy.reset(env)
-    disc, total, good, bad, t = 0.0, 0.0, 0, 0, 0
+    disc, total, good, bad, t, returned = 0.0, 0.0, 0, 0, 0, False
     while not s.terminal and t < env.cfg.max_steps:
         a = policy.act(b)
         if a == SAMPLE and (i := env.rock_at(s.pos)) is not None:
             good += s.rocks[i]
             bad += not s.rocks[i]
+        returned |= env.is_exit(s, a)
         sp, o, r = env.step(s, a, rng)
         disc += env.cfg.discount**t * r
         total += r
         b = b.update(env, a, o)
         s, t = sp, t + 1
-    return EpisodeResult(disc, total, t, good, bad, s.terminal)
+    return EpisodeResult(disc, total, t, good, bad, returned)
 
 
 def evaluate(env: RockSampleEnv, policy: Policy, episodes: int = 1000, seed: int = 0) -> dict:

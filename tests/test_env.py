@@ -13,7 +13,19 @@ def env():
 def test_moves_and_walls(env):
     s = State((0, 0), (True, False))
     assert env.transition(s, NORTH)[0].pos == (0, 1)
-    assert env.transition(s, WEST) == (s, 0.0)
+    sp, r = env.transition(s, WEST)  # illegal: -100 and terminate
+    assert sp.terminal and r == -100
+
+
+def test_walls_without_termination():
+    env = RockSampleEnv(RoverConfig(grid_size=4, rocks=((1, 0),), start=(0, 0), illegal_terminates=False))
+    s = State((0, 0), (True,))
+    assert env.transition(s, WEST) == (s, -100.0)
+
+
+def test_default_is_published_rocksample_7_8():
+    cfg = RoverConfig()
+    assert cfg.grid_size == 7 and cfg.num_rocks == 8 and cfg.start == (0, 3)
 
 
 def test_exit_east_is_terminal_with_reward(env):
@@ -26,8 +38,8 @@ def test_sampling(env):
     assert r == 10 and sp.rocks == (False, False)
     _, r = env.transition(sp, SAMPLE)
     assert r == -10
-    _, r = env.transition(State((0, 0), (True, False)), SAMPLE)
-    assert r == -10
+    sp, r = env.transition(State((0, 0), (True, False)), SAMPLE)  # empty cell is illegal
+    assert r == -100 and sp.terminal
 
 
 def test_sensor_accuracy(env):

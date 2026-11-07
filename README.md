@@ -6,7 +6,9 @@ An autonomous rover must decide where to explore, when extra measurements are wo
 
 ## Starting point: RockSample
 
-Following instructor feedback, the core model is **RockSample** (Smith & Simmons, 2004): a rover on an *n×n* grid with *k* rocks of hidden value (good/bad), a distance-dependent noisy sensor, and an exit on the east edge that stands for returning to base. Our default is an 8×8 grid with 8 rocks, small enough (16,385 states) for **SARSOP** to give a near-optimal reference policy. We then add the project's own elements (battery budget, terrain hazards, sensing costs) on top of it.
+Following instructor feedback, the core model is **RockSample** (Smith & Simmons, 2004): a rover on an *n×n* grid with *k* rocks of hidden value (good/bad), a distance-dependent noisy sensor, and an exit on the east edge that stands for returning to base. The default `RoverConfig()` is the published **RockSample(7,8)** benchmark (7×7 grid, 8 rocks, start (0,3), 12,545 states), small enough for **SARSOP** to give a near-optimal reference policy. `tests/test_published_model.py` checks that our model matches the `RockSample_7_8.pomdp` file shipped with SARSOP on every transition, reward and observation probability. We then add the project's own elements (battery budget, terrain hazards, sensing costs) on top of it.
+
+Rules: sampling a good rock gives +10 (it then turns bad), sampling a bad rock −10, exiting east +10. Illegal actions (bumping a north/south/west wall, sampling an empty cell) give −100 and end the episode.
 
 ## Setup
 
@@ -39,19 +41,21 @@ python scripts/evaluate.py --policies nearest greedy sarsop
 | `tests/` | pytest suite |
 | `report/` | LaTeX proposal and final report |
 
-## Baseline results (8×8, 8 rocks, γ = 0.95, 2000 episodes)
+## Baseline results (RockSample(7,8), γ = 0.95, 2000 episodes)
 
 | Policy | Discounted return | Returned to base | Good / bad samples |
 |---|---|---|---|
-| random | −14.42 ± 0.19 | 25% | 0.59 / 1.39 |
-| nearest-target | 2.14 ± 0.33 | 100% | 4.09 / 3.91 |
-| greedy expected value | 15.97 ± 0.11 | 100% | 3.74 / 0.24 |
+| random | −74.16 ± 0.52 | 0% | 0.03 / 0.03 |
+| nearest-target | 1.89 ± 0.35 | 100% | 3.97 / 4.03 |
+| greedy expected value | 17.07 ± 0.12 | 100% | 3.78 / 0.24 |
+| SARSOP | *pending build* | | |
 
 ## Roadmap
 
 - [x] RockSample environment, exact belief, baseline policies, evaluation harness
 - [x] SARSOP export / policy loader
-- [ ] Build SARSOP and record its value on the 8×8 benchmark as the near-optimal reference
+- [x] Default to the published RockSample(7,8) layout, verified against SARSOP's model file
+- [ ] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
 - [ ] Risk-aware planner (rollout lookahead → POMCP) in `rover/planners.py`
 - [ ] Battery budget: per-action energy use, failure if depleted before returning
 - [ ] Terrain hazards: hidden hazard classes per cell, stochastic delay or immobilization, noisy hazard scans
