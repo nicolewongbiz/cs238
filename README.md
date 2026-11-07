@@ -19,7 +19,7 @@ pytest
 python scripts/evaluate.py --episodes 1000
 ```
 
-Optional SARSOP reference (builds [AdaCompNUS/sarsop](https://github.com/AdaCompNUS/sarsop) into `third_party/`):
+Optional SARSOP reference (builds [AdaCompNUS/sarsop](https://github.com/AdaCompNUS/sarsop) into `third_party/`; the script patches the build for Apple Silicon and recent clang):
 
 ```bash
 ./scripts/install_sarsop.sh
@@ -48,14 +48,16 @@ python scripts/evaluate.py --policies nearest greedy sarsop
 | random | −74.16 ± 0.52 | 0% | 0.03 / 0.03 |
 | nearest-target | 1.89 ± 0.35 | 100% | 3.97 / 4.03 |
 | greedy expected value | 17.07 ± 0.12 | 100% | 3.78 / 0.24 |
-| SARSOP | *pending build* | | |
+| SARSOP (300 s) | 21.42 ± 0.14 | 100% | 3.83 / 0.10 |
+
+SARSOP bounds on V(b₀) after 300 s: [20.92, 24.76]. Kurniawati et al. (2008) report ≈ 21.27 for RockSample(7,8), so SARSOP serves as the near-optimal reference.
 
 ## Roadmap
 
 - [x] RockSample environment, exact belief, baseline policies, evaluation harness
 - [x] SARSOP export / policy loader
 - [x] Default to the published RockSample(7,8) layout, verified against SARSOP's model file
-- [ ] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
+- [x] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
 - [ ] Risk-aware planner (rollout lookahead → POMCP) in `rover/planners.py`
 - [ ] Battery budget: per-action energy use, failure if depleted before returning
 - [ ] Terrain hazards: hidden hazard classes per cell, stochastic delay or immobilization, noisy hazard scans
