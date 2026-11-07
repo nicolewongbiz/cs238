@@ -17,8 +17,9 @@ from .env import EAST, NORTH, SAMPLE, SOUTH, WEST, RockSampleEnv
 class Policy:
     name = "policy"
 
-    def reset(self, env: RockSampleEnv) -> None:
-        """Called at the start of every episode."""
+    def reset(self, env: RockSampleEnv, rng: np.random.Generator | None = None) -> None:
+        """Called at the start of every episode. `rng` is a per-episode stream for
+        any internal randomness, so results don't depend on episode order."""
 
     def act(self, belief: RockBelief) -> int:
         raise NotImplementedError
@@ -40,8 +41,10 @@ class RandomPolicy(Policy):
     def __init__(self, seed: int = 0):
         self.rng = np.random.default_rng(seed)
 
-    def reset(self, env):
+    def reset(self, env, rng=None):
         self.n = env.num_actions
+        if rng is not None:
+            self.rng = rng
 
     def act(self, belief):
         return int(self.rng.integers(self.n))
@@ -52,7 +55,7 @@ class NearestTargetPolicy(Policy):
 
     name = "nearest"
 
-    def reset(self, env):
+    def reset(self, env, rng=None):
         self.env = env
         self.visited: set[int] = set()
 
@@ -83,7 +86,7 @@ class GreedyExpectedValuePolicy(Policy):
         self.lo, self.hi = uncertain
         self.max_checks = max_checks
 
-    def reset(self, env):
+    def reset(self, env, rng=None):
         self.env = env
         self.checks = [0] * env.cfg.num_rocks
 

@@ -11,7 +11,7 @@ from rover import (
     evaluate,
 )
 from rover.env import EAST, NORTH, SAMPLE, SOUTH, WEST
-from rover.planners import RolloutPlanner, candidate_actions, cvar
+from rover.planners import POMCPPlanner, RolloutPlanner, candidate_actions, cvar
 
 
 def test_baselines_run_and_return():
@@ -57,3 +57,28 @@ def test_rollout_planner_runs_and_returns():
     r = evaluate(env, RolloutPlanner(num_rollouts=8), episodes=20, seed=0)
     assert r["return_rate"] == 1.0
     assert r["bad_samples"] < 0.5
+
+
+def test_pomcp_runs_and_returns():
+    env = RockSampleEnv(RoverConfig(grid_size=3, rocks=((1, 1), (2, 0)), start=(0, 1)))
+    r = evaluate(env, POMCPPlanner(num_sims=200), episodes=20, seed=0)
+    assert r["return_rate"] == 1.0
+    assert r["bad_samples"] < 0.5
+
+
+def test_pomcp_tree_statistics_are_consistent():
+    env = RockSampleEnv()
+    planner = POMCPPlanner(num_sims=300)
+    planner.reset(env, np.random.default_rng(0))
+    planner.act(RockBelief.initial(env))
+    root = planner.last_root
+    assert root.N == 300 == sum(root.n)
+    assert min(root.n) >= 1  # every candidate action tried
+
+
+def test_evaluate_is_independent_of_jobs():
+    env = RockSampleEnv()
+    for policy in (GreedyExpectedValuePolicy(), RandomPolicy(), RolloutPlanner(num_rollouts=2)):
+        serial = evaluate(env, policy, episodes=6, seed=3, jobs=1)
+        parallel = evaluate(env, policy, episodes=6, seed=3, jobs=3)
+        assert serial == parallel
