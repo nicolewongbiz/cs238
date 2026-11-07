@@ -3,7 +3,7 @@
 Proposal mapping:
   (1) fixed / nearest-target      -> NearestTargetPolicy
   (2) greedy expected-science/cost -> GreedyExpectedValuePolicy
-  (3) risk-aware belief planner    -> rover/planners.py (TODO)
+  (3) risk-aware belief planner    -> rover/planners.py (RolloutPlanner)
 """
 
 from __future__ import annotations
@@ -85,33 +85,34 @@ class GreedyExpectedValuePolicy(Policy):
 
     def reset(self, env):
         self.env = env
-        self.checks = np.zeros(env.cfg.num_rocks, dtype=int)
+        self.checks = [0] * env.cfg.num_rocks
 
     def _expected_sample_value(self, p: float) -> float:
         cfg = self.env.cfg
         return p * cfg.good_reward + (1 - p) * cfg.bad_penalty
 
     def act(self, belief):
-        cfg = self.env.cfg
-        i = self.env.rock_at(belief.pos)
-        if i is not None and self._expected_sample_value(belief.p_good[i]) > 0:
+        # Plain Python lists: this runs inside every planner rollout, where numpy
+        # scalar overhead dominates for k = 8 rocks.
+        cfg, pos = self.env.cfg, belief.pos
+        p_good = belief.p_good.tolist()
+        i = self.env.rock_at(pos)
+        if i is not None and self._expected_sample_value(p_good[i]) > 0:
             return SAMPLE
 
         uncertain = [
-            j
-            for j, p in enumerate(belief.p_good)
-            if self.lo < p < self.hi and self.checks[j] < self.max_checks
+            j for j, p in enumerate(p_good) if self.lo < p < self.hi and self.checks[j] < self.max_checks
         ]
         if uncertain:
-            j = min(uncertain, key=lambda j: manhattan(belief.pos, cfg.rocks[j]))
+            j = min(uncertain, key=lambda j: manhattan(pos, cfg.rocks[j]))
             self.checks[j] += 1
             return self.env.check_action(j)
 
         scores = [
-            cfg.discount ** manhattan(belief.pos, cfg.rocks[j]) * self._expected_sample_value(p)
-            for j, p in enumerate(belief.p_good)
+            cfg.discount ** manhattan(pos, cfg.rocks[j]) * self._expected_sample_value(p)
+            for j, p in enumerate(p_good)
         ]
-        best = int(np.argmax(scores))
+        best = max(range(len(scores)), key=scores.__getitem__)  # first max, like np.argmax
         if scores[best] > 0:
-            return move_toward(belief.pos, cfg.rocks[best])
+            return move_toward(pos, cfg.rocks[best])
         return EAST

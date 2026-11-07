@@ -20,6 +20,7 @@ configuration stays available as a benchmark that SARSOP can solve.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -105,7 +106,7 @@ class RockSampleEnv:
 
     def sensor_accuracy(self, pos: tuple[int, int], rock: int) -> float:
         """P(CHECK_rock reports the true rock value) from position `pos`."""
-        d = float(np.hypot(pos[0] - self.cfg.rocks[rock][0], pos[1] - self.cfg.rocks[rock][1]))
+        d = math.hypot(pos[0] - self.cfg.rocks[rock][0], pos[1] - self.cfg.rocks[rock][1])
         eta = 2.0 ** (-d / self.cfg.sensor_half_eff_dist)
         return 0.5 * (1.0 + eta)
 
@@ -152,7 +153,17 @@ class RockSampleEnv:
         return probs
 
     def step(self, s: State, a: int, rng: np.random.Generator) -> tuple[State, int, float]:
-        """Generative model: returns (next_state, observation, reward)."""
+        """Generative model: returns (next_state, observation, reward).
+
+        Samples from `observation_probs` with exactly one uniform draw per step,
+        the same draw `rng.choice(NUM_OBS, p=...)` would make, but without numpy
+        overhead (this is the inner loop of every rollout planner).
+        """
         sp, r = self.transition(s, a)
-        o = int(rng.choice(NUM_OBS, p=self.observation_probs(a, sp)))
-        return sp, o, r
+        u = rng.random()
+        if a < NUM_BASIC_ACTIONS or sp.terminal:
+            return sp, OBS_NONE, r
+        i = a - NUM_BASIC_ACTIONS
+        acc = self.sensor_accuracy(sp.pos, i)
+        p_report_good = acc if sp.rocks[i] else 1.0 - acc
+        return sp, (OBS_GOOD if u < p_report_good else OBS_BAD), r

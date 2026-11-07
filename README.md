@@ -34,7 +34,7 @@ python scripts/evaluate.py --policies nearest greedy sarsop
 | `rover/env.py` | RockSample generative model and config (`RoverConfig`) |
 | `rover/belief.py` | Exact factored belief (per-rock P(good)) with Bayes updates |
 | `rover/policies.py` | Baselines: random, nearest-target, greedy expected value |
-| `rover/planners.py` | **TODO:** risk-aware planner (rollout / POMCP) |
+| `rover/planners.py` | Risk-aware planners: Monte Carlo rollout with optional CVaR scoring (POMCP next) |
 | `rover/simulate.py` | Episode runner and Monte Carlo evaluation metrics |
 | `rover/sarsop.py` | `.pomdp` export, `pomdpsol` wrapper, alpha-vector policy |
 | `scripts/` | Experiment entry points |
@@ -48,9 +48,12 @@ python scripts/evaluate.py --policies nearest greedy sarsop
 | random | −74.16 ± 0.52 | 0% | 0.03 / 0.03 |
 | nearest-target | 1.89 ± 0.35 | 100% | 3.97 / 4.03 |
 | greedy expected value | 17.07 ± 0.12 | 100% | 3.78 / 0.24 |
+| rollout (20/action, greedy base)* | 17.58 ± 0.46 | 100% | 4.10 / 0.10 |
 | SARSOP (300 s) | 21.42 ± 0.14 | 100% | 3.83 / 0.10 |
 
 SARSOP bounds on V(b₀) after 300 s: [20.92, 24.76]. Kurniawati et al. (2008) report ≈ 21.27 for RockSample(7,8), so SARSOP serves as the near-optimal reference.
+
+\*100 episodes, ~0.9 s/episode. Going to 50 rollouts per action does not help (17.66 ± 0.55), so one-step lookahead is limited by the greedy base policy; deeper search (POMCP) is needed to close the gap to SARSOP.
 
 ## Roadmap
 
@@ -58,7 +61,8 @@ SARSOP bounds on V(b₀) after 300 s: [20.92, 24.76]. Kurniawati et al. (2008) r
 - [x] SARSOP export / policy loader
 - [x] Default to the published RockSample(7,8) layout, verified against SARSOP's model file
 - [x] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
-- [ ] Risk-aware planner (rollout lookahead → POMCP) in `rover/planners.py`
+- [x] Rollout-lookahead planner with CVaR risk scoring in `rover/planners.py`
+- [ ] POMCP planner
 - [ ] Battery budget: per-action energy use, failure if depleted before returning
 - [ ] Terrain hazards: hidden hazard classes per cell, stochastic delay or immobilization, noisy hazard scans
 - [ ] Experiments: sweeps over sensor noise (`sensor_half_eff_dist`) and hazard probability, science–safety tradeoff plots
