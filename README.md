@@ -64,23 +64,25 @@ Paired against greedy on the same 200 episodes: rollout +0.44 ± 0.24, POMCP −
 
 ## Battery results (RockSample(7,8) + battery, 200 episodes)
 
-Energy per action: move 1, check 1, sample 2. Running out before exiting strands the rover (−100, mission fails). Greedy uses about 33 energy per mission with no battery limit.
+Energy per action: move 1, check 1, sample 2. Running out before exiting strands the rover (−100, mission fails). Greedy uses about 33 energy per mission with no battery limit. `greedy-battery` is greedy plus a return-home rule: it only takes the greedy action if the battery left afterwards still covers the drive east. The planners below use it as their base policy (`--base greedy-battery`).
 
-| Capacity | Policy | Discounted return | Failed | Returned | Good / bad samples |
-|---|---|---|---|---|---|
-| 25 | greedy | −16.44 ± 0.81 | 87% | 13% | 2.46 / 0.14 |
-| 25 | rollout | −5.18 ± 1.19 | 55% | 45% | 2.27 / 0.09 |
-| 25 | rollout, CVaR 0.2 | **1.74 ± 1.11** | **30%** | 70% | 1.74 / 0.02 |
-| 35 | greedy | 7.93 ± 0.77 | 37% | 63% | 3.47 / 0.21 |
-| 35 | rollout | **9.73 ± 0.69** | 24% | 76% | 3.34 / 0.14 |
-| 35 | rollout, CVaR 0.2 | 8.33 ± 0.64 | 23% | 77% | 2.87 / 0.04 |
-| 50 | greedy | 16.78 ± 0.39 | 0% | 100% | 3.73 / 0.23 |
-| 50 | rollout | **17.18 ± 0.36** | 0% | 100% | 3.84 / 0.04 |
-| 50 | rollout, CVaR 0.2 | 13.78 ± 0.28 | 0% | 100% | 3.63 / 0.03 |
+| Capacity | Policy | Discounted return | Failed | Good / bad samples |
+|---|---|---|---|---|
+| 25 | greedy (battery-blind) | −16.44 ± 0.81 | 87% | 2.46 / 0.14 |
+| 25 | greedy-battery | 12.71 ± 0.30 | 0% | 1.96 / 0.13 |
+| 25 | rollout | **14.81 ± 0.35** | 0% | 2.08 / 0.04 |
+| 25 | rollout, CVaR 0.2 | 12.17 ± 0.27 | 0% | 1.52 / 0.03 |
+| 35 | greedy (battery-blind) | 7.93 ± 0.77 | 37% | 3.47 / 0.21 |
+| 35 | greedy-battery | 15.98 ± 0.36 | 0% | 3.25 / 0.19 |
+| 35 | rollout | **16.43 ± 0.37** | 0% | 3.35 / 0.10 |
+| 35 | rollout, CVaR 0.2 | 13.30 ± 0.26 | 0% | 2.65 / 0.02 |
+| 50 | greedy-battery (= greedy) | 16.78 ± 0.39 | 0% | 3.73 / 0.23 |
+| 50 | rollout | **17.22 ± 0.36** | 0% | 3.85 / 0.05 |
+| 50 | rollout, CVaR 0.2 | 13.69 ± 0.27 | 0% | 3.55 / 0.01 |
 
-- With a tight battery, greedy (battery-blind) is stranded most of the time. Rollout cuts failures, and CVaR scoring cuts them further and gives the best return.
-- With an ample battery, CVaR's caution costs about 3.4 points of return: the price of risk aversion when nothing can go wrong.
-- Energy use is deterministic and fully observed, so every failure comes from short-sighted planning. Rollout still fails often at capacity 25 because its greedy base policy ignores the battery.
+- **A return-home rule removes all battery risk.** Energy use is deterministic and the battery is observed, so `greedy-battery` never strands. Battery-blind greedy is a strawman; compare against `greedy-battery`.
+- **Rollout's advantage grows as the budget tightens:** +2.1 over greedy-battery at capacity 25, about +0.45 at 35 and 50. It spends a scarce budget better (fewer wasted checks, almost no bad samples).
+- **CVaR only costs here.** With no failure mode left, it just acts pessimistically about rock values and samples less. Risk-aware scoring needs real randomness in outcomes, which terrain hazards (stochastic delays, energy cost, immobilization) will add.
 
 ## Roadmap
 

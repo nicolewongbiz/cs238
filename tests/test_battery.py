@@ -1,7 +1,15 @@
 import numpy as np
 import pytest
 
-from rover import GreedyExpectedValuePolicy, RockBelief, RockSampleEnv, RoverConfig, State, evaluate
+from rover import (
+    BatteryAwareGreedyPolicy,
+    GreedyExpectedValuePolicy,
+    RockBelief,
+    RockSampleEnv,
+    RoverConfig,
+    State,
+    evaluate,
+)
 from rover.env import EAST, NORTH, SAMPLE
 from rover.planners import RolloutPlanner
 from rover.sarsop import write_pomdp
@@ -88,3 +96,17 @@ def test_rollout_avoids_stranding_better_than_greedy():
 def test_sarsop_export_refuses_battery(tmp_path):
     with pytest.raises(NotImplementedError):
         write_pomdp(make_env(5), tmp_path / "m.pomdp")
+
+
+def test_battery_aware_greedy_matches_greedy_without_battery():
+    env = RockSampleEnv()
+    g = evaluate(env, GreedyExpectedValuePolicy(), episodes=50, seed=2)
+    ga = evaluate(env, BatteryAwareGreedyPolicy(), episodes=50, seed=2)
+    assert g == {**ga, "policy": g["policy"]}
+
+
+@pytest.mark.parametrize("capacity", [7, 15, 25, 35])
+def test_battery_aware_greedy_never_strands(capacity):
+    env = RockSampleEnv(RoverConfig(battery_capacity=capacity))  # 7 = exact cost of driving home from start
+    r = evaluate(env, BatteryAwareGreedyPolicy(), episodes=50, seed=0)
+    assert r["failure_rate"] == 0.0 and r["return_rate"] == 1.0

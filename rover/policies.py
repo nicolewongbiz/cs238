@@ -3,6 +3,7 @@
 Proposal mapping:
   (1) fixed / nearest-target      -> NearestTargetPolicy
   (2) greedy expected-science/cost -> GreedyExpectedValuePolicy
+      ... with a return-home rule      -> BatteryAwareGreedyPolicy
   (3) risk-aware belief planner    -> rover/planners.py (RolloutPlanner)
 """
 
@@ -11,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 
 from .belief import RockBelief
-from .env import EAST, NORTH, SAMPLE, SOUTH, WEST, RockSampleEnv
+from .env import EAST, NORTH, SAMPLE, SOUTH, WEST, RockSampleEnv, State
 
 
 class Policy:
@@ -119,3 +120,32 @@ class GreedyExpectedValuePolicy(Policy):
         if scores[best] > 0:
             return move_toward(pos, cfg.rocks[best])
         return EAST
+
+
+class BatteryAwareGreedyPolicy(GreedyExpectedValuePolicy):
+    """Greedy, plus a return-home rule: only take the greedy action if the battery
+    left afterwards still covers the drive east to base; otherwise head east.
+
+    Energy use is deterministic and the battery is observed, so this never
+    strands the rover (provided the start battery covers the drive home). With
+    no battery it is identical to greedy.
+    """
+
+    name = "greedy-battery"
+
+    def exit_energy(self, pos: tuple[int, int]) -> int:
+        """Energy to drive from `pos` off the east edge."""
+        return (self.env.cfg.grid_size - pos[0]) * self.env.cfg.move_energy
+
+    def act(self, belief):
+        a = super().act(belief)
+        env = self.env
+        if env.cfg.battery_capacity is None:
+            return a
+        s = State(belief.pos, (False,) * env.cfg.num_rocks, False, belief.battery)
+        if env.is_stranded(s, a):
+            return EAST
+        sp, _ = env.transition(s, a)
+        if not sp.terminal and sp.battery < self.exit_energy(sp.pos):
+            return EAST
+        return a
