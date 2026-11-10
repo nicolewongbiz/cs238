@@ -13,9 +13,15 @@ The core model is classic RockSample(n, k):
 The default config is the published RockSample(7,8) benchmark: 7x7 grid,
 8 rocks, start (0, 3), d0 = 20, discount 0.95.
 
-Project extensions (battery budget, terrain hazards, sensing costs) should be
-added on top of this model via `RoverConfig` fields so the plain RockSample
-configuration stays available as a benchmark that SARSOP can solve.
+Project extensions are added via `RoverConfig` fields that are off by default,
+so the plain RockSample configuration stays available as a benchmark that
+SARSOP can solve:
+
+  * Battery (`battery_capacity` not None): every action costs energy
+    (`move_energy`, `check_energy`, `sample_energy`). An action the remaining
+    battery can't pay for strands the rover: the episode ends with
+    `depletion_penalty` and the action doesn't happen. The battery level is
+    part of the state and fully observed.
 """
 
 from __future__ import annotations
@@ -55,6 +61,13 @@ class RoverConfig:
     check_cost: float = 0.0  # extra cost per CHECK action
     discount: float = 0.95
     max_steps: int = 200
+    # Battery (None = no battery). Energy costs are also used for the
+    # energy_used metric when the battery is off.
+    battery_capacity: int | None = None
+    move_energy: int = 1  # per N/S/E/W, including the exit move
+    check_energy: int = 1
+    sample_energy: int = 2
+    depletion_penalty: float = -100.0  # stranded: can't pay for an action
 
     @property
     def num_rocks(self) -> int:
@@ -71,6 +84,7 @@ class State(NamedTuple):
     pos: tuple[int, int]
     rocks: tuple[bool, ...]  # True = good
     terminal: bool = False
+    battery: int = 0  # remaining energy; unused when battery_capacity is None
 
 
 class RockSampleEnv:
@@ -102,7 +116,24 @@ class RockSampleEnv:
     # ----- model ------------------------------------------------------------
     def sample_initial_state(self, rng: np.random.Generator) -> State:
         rocks = tuple(bool(g) for g in rng.random(self.cfg.num_rocks) < self.cfg.p_good)
-        return State(self.cfg.start, rocks)
+        return State(self.cfg.start, rocks, battery=self.initial_battery)
+
+    @property
+    def initial_battery(self) -> int:
+        return self.cfg.battery_capacity or 0
+
+    def energy_cost(self, a: int) -> int:
+        if a in MOVES:
+            return self.cfg.move_energy
+        return self.cfg.sample_energy if a == SAMPLE else self.cfg.check_energy
+
+    def is_stranded(self, s: State, a: int) -> bool:
+        """True if the battery can't pay for `a`, so taking it strands the rover."""
+        return (
+            not s.terminal
+            and self.cfg.battery_capacity is not None
+            and s.battery < self.energy_cost(a)
+        )
 
     def sensor_accuracy(self, pos: tuple[int, int], rock: int) -> float:
         """P(CHECK_rock reports the true rock value) from position `pos`."""
@@ -111,18 +142,23 @@ class RockSampleEnv:
         return 0.5 * (1.0 + eta)
 
     def transition(self, s: State, a: int) -> tuple[State, float]:
-        """Deterministic next state and reward for plain RockSample."""
+        """Deterministic next state and reward."""
         if s.terminal:
             return s, 0.0
         r = -self.cfg.step_cost
+        if self.cfg.battery_capacity is not None:
+            cost = self.energy_cost(a)
+            if s.battery < cost:  # stranded: the action doesn't happen
+                return s._replace(terminal=True), r + self.cfg.depletion_penalty
+            s = s._replace(battery=s.battery - cost)
         if a in MOVES:
             dx, dy = MOVES[a]
             x, y = s.pos[0] + dx, s.pos[1] + dy
             n = self.cfg.grid_size
             if x >= n:  # exit to the east = return to base
-                return State(s.pos, s.rocks, terminal=True), r + self.cfg.exit_reward
+                return s._replace(terminal=True), r + self.cfg.exit_reward
             if 0 <= x < n and 0 <= y < n:
-                return State((x, y), s.rocks), r
+                return s._replace(pos=(x, y)), r
             return self._illegal(s, r)  # bumped into a wall
         if a == SAMPLE:
             i = self.rock_at(s.pos)
@@ -130,15 +166,20 @@ class RockSampleEnv:
                 return self._illegal(s, r)
             reward = self.cfg.good_reward if s.rocks[i] else self.cfg.bad_penalty
             rocks = s.rocks[:i] + (False,) + s.rocks[i + 1 :]
-            return State(s.pos, rocks), r + reward
+            return s._replace(rocks=rocks), r + reward
         return s, r - self.cfg.check_cost  # CHECK_i
 
     def _illegal(self, s: State, r: float) -> tuple[State, float]:
-        return State(s.pos, s.rocks, terminal=self.cfg.illegal_terminates), r + self.cfg.illegal_penalty
+        return s._replace(terminal=self.cfg.illegal_terminates), r + self.cfg.illegal_penalty
 
     def is_exit(self, s: State, a: int) -> bool:
         """True if taking `a` in `s` leaves the grid to the east (returns to base)."""
-        return not s.terminal and a == EAST and s.pos[0] == self.cfg.grid_size - 1
+        return (
+            not s.terminal
+            and a == EAST
+            and s.pos[0] == self.cfg.grid_size - 1
+            and not self.is_stranded(s, a)
+        )
 
     def observation_probs(self, a: int, sp: State) -> np.ndarray:
         """Distribution over observations after taking `a` and landing in `sp`."""

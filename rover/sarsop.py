@@ -66,6 +66,8 @@ def config_probs(p_good: np.ndarray) -> np.ndarray:
 
 
 def write_pomdp(env: RockSampleEnv, path: str | os.PathLike) -> StateIndex:
+    if env.cfg.battery_capacity is not None:
+        raise NotImplementedError("SARSOP export supports the base model only (battery_capacity=None)")
     idx = StateIndex(env)
     lines = [
         f"discount: {env.cfg.discount}",

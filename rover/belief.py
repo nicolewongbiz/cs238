@@ -4,7 +4,8 @@ The rover's position is fully observed and rocks are independent a priori, and
 each CHECK_i only informs rock i, so the belief factorizes into one Bernoulli
 P(good) per rock. Updates are exact Bayes.
 
-When hazards/battery are added, anything hidden and non-factorizable should
+The battery level is fully observed, so it is tracked like the position.
+When hazards are added, anything hidden and non-factorizable should
 move to a particle belief (e.g. for a POMCP-style planner).
 """
 
@@ -22,26 +23,28 @@ class RockBelief:
     pos: tuple[int, int]
     p_good: np.ndarray  # shape (num_rocks,)
     terminal: bool = False
+    battery: int = 0  # fully observed, like the position
 
     @classmethod
     def initial(cls, env: RockSampleEnv) -> "RockBelief":
-        return cls(env.cfg.start, np.full(env.cfg.num_rocks, env.cfg.p_good))
+        return cls(env.cfg.start, np.full(env.cfg.num_rocks, env.cfg.p_good), battery=env.initial_battery)
 
     def copy(self) -> "RockBelief":
-        return RockBelief(self.pos, self.p_good.copy(), self.terminal)
+        return RockBelief(self.pos, self.p_good.copy(), self.terminal, self.battery)
 
     def sample_state(self, rng: np.random.Generator) -> State:
         rocks = tuple(bool(g) for g in rng.random(len(self.p_good)) < self.p_good)
-        return State(self.pos, rocks, self.terminal)
+        return State(self.pos, rocks, self.terminal, self.battery)
 
     def update(self, env: RockSampleEnv, a: int, o: int) -> "RockBelief":
         """Return the posterior belief after taking action `a` and observing `o`."""
         b = self.copy()
         if b.terminal:
             return b
-        # Position dynamics don't depend on rock values, so propagate any state.
-        sp, _ = env.transition(State(b.pos, (False,) * len(b.p_good)), a)
-        b.pos, b.terminal = sp.pos, sp.terminal
+        # Position and battery dynamics don't depend on rock values, so
+        # propagate any rock configuration.
+        sp, _ = env.transition(State(b.pos, (False,) * len(b.p_good), False, b.battery), a)
+        b.pos, b.terminal, b.battery = sp.pos, sp.terminal, sp.battery
         if a == SAMPLE:
             i = env.rock_at(b.pos)
             if i is not None:

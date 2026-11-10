@@ -62,6 +62,26 @@ Paired against greedy on the same 200 episodes: rollout +0.44 ± 0.24, POMCP −
 - **POMCP** is short of simulations, not wrong: on a 5×5, 4-rock model it improves from 15.30 (1k sims) to 16.41 (5k) toward SARSOP's 17.34. Pure Python manages about 1000 sims in 0.3 s per decision; published POMCP results on RockSample(7,8) use far more.
 - Cost per episode (one core): rollout ≈ 0.9 s, POMCP ≈ 10 s. Use `--jobs 0` to spread episodes over all cores.
 
+## Battery results (RockSample(7,8) + battery, 200 episodes)
+
+Energy per action: move 1, check 1, sample 2. Running out before exiting strands the rover (−100, mission fails). Greedy uses about 33 energy per mission with no battery limit.
+
+| Capacity | Policy | Discounted return | Failed | Returned | Good / bad samples |
+|---|---|---|---|---|---|
+| 25 | greedy | −16.44 ± 0.81 | 87% | 13% | 2.46 / 0.14 |
+| 25 | rollout | −5.18 ± 1.19 | 55% | 45% | 2.27 / 0.09 |
+| 25 | rollout, CVaR 0.2 | **1.74 ± 1.11** | **30%** | 70% | 1.74 / 0.02 |
+| 35 | greedy | 7.93 ± 0.77 | 37% | 63% | 3.47 / 0.21 |
+| 35 | rollout | **9.73 ± 0.69** | 24% | 76% | 3.34 / 0.14 |
+| 35 | rollout, CVaR 0.2 | 8.33 ± 0.64 | 23% | 77% | 2.87 / 0.04 |
+| 50 | greedy | 16.78 ± 0.39 | 0% | 100% | 3.73 / 0.23 |
+| 50 | rollout | **17.18 ± 0.36** | 0% | 100% | 3.84 / 0.04 |
+| 50 | rollout, CVaR 0.2 | 13.78 ± 0.28 | 0% | 100% | 3.63 / 0.03 |
+
+- With a tight battery, greedy (battery-blind) is stranded most of the time. Rollout cuts failures, and CVaR scoring cuts them further and gives the best return.
+- With an ample battery, CVaR's caution costs about 3.4 points of return: the price of risk aversion when nothing can go wrong.
+- Energy use is deterministic and fully observed, so every failure comes from short-sighted planning. Rollout still fails often at capacity 25 because its greedy base policy ignores the battery.
+
 ## Roadmap
 
 - [x] RockSample environment, exact belief, baseline policies, evaluation harness
@@ -70,7 +90,7 @@ Paired against greedy on the same 200 episodes: rollout +0.44 ± 0.24, POMCP −
 - [x] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
 - [x] Rollout-lookahead planner with CVaR risk scoring in `rover/planners.py`
 - [x] POMCP planner (needs more simulations or speed to beat greedy)
-- [ ] Battery budget: per-action energy use, failure if depleted before returning
+- [x] Battery budget: per-action energy use, failure if depleted before returning
 - [ ] Terrain hazards: hidden hazard classes per cell, stochastic delay or immobilization, noisy hazard scans
 - [ ] Experiments: sweeps over sensor noise (`sensor_half_eff_dist`) and hazard probability, science–safety tradeoff plots
 - [ ] *Extension:* continuous dynamics with a CBF safety filter
