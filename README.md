@@ -84,6 +84,24 @@ Energy per action: move 1, check 1, sample 2. Running out before exiting strands
 - **Rollout's advantage grows as the budget tightens:** +2.1 over greedy-battery at capacity 25, about +0.45 at 35 and 50. It spends a scarce budget better (fewer wasted checks, almost no bad samples).
 - **CVaR only costs here.** With no failure mode left, it just acts pessimistically about rock values and samples less. Risk-aware scoring needs real randomness in outcomes, which terrain hazards (stochastic delays, energy cost, immobilization) will add.
 
+### Battery vs SARSOP on a small map (RockSample(5,4) + battery, 1000 episodes)
+
+SARSOP can only handle the battery on a small map, because the battery level multiplies the state count (10,001 states at capacity 24). `scripts/battery_sarsop.py` re-solves SARSOP for each capacity (120 s) and runs all policies on the same missions. Driving home from the start costs 5 energy; greedy uses about 17 with no battery limit. SARSOP converged (bound gap < 0.001) at every capacity except 24 (gap 0.47), so it is effectively optimal here.
+
+| Capacity | greedy | greedy-battery | rollout | rollout, CVaR 0.2 | SARSOP |
+|---|---|---|---|---|---|
+| 8 | −64.53 (100% fail) | 6.98 | **8.15** | **8.15** | **8.15** |
+| 12 | −39.89 (83% fail) | 10.34 | 12.85 | 11.98 | **13.59** |
+| 16 | −11.83 (50% fail) | 13.29 | 14.36 | 12.84 | **16.24** |
+| 24 | 13.93 (5% fail) | 15.92 | 15.77 | 13.94 | **17.37** |
+| none | 16.06 | 16.06 | 15.88 | 13.99 | **17.45** |
+
+Standard errors are 0.1–0.3 (0.8 for failing greedy). All policies except battery-blind greedy have 0% failures.
+
+- **A tight budget is where planning pays off.** At capacity 16, SARSOP keeps 93% of its unconstrained value (16.24 vs 17.45) while greedy-battery loses about 3 points. Rollout closes 77% of the greedy-battery → optimal gap at capacity 12, 36% at 16, and none when the budget is loose.
+- **At capacity 8 no science is affordable.** The optimal plan is to drive straight home (8.15 = 10·0.95⁴); rollout finds it, while greedy-battery wastes steps checking first.
+- **CVaR never helps, as on the big map,** because battery outcomes are deterministic. That is the motivation for stochastic terrain hazards.
+
 ## Roadmap
 
 - [x] RockSample environment, exact belief, baseline policies, evaluation harness

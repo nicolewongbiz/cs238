@@ -12,7 +12,15 @@ from rover import (
 )
 from rover.env import EAST, NORTH, SAMPLE
 from rover.planners import RolloutPlanner
-from rover.sarsop import write_pomdp
+from rover.sarsop import SarsopPolicy, StateIndex, find_pomdpsol, initial_distribution, solve, write_pomdp
+
+
+def _have_pomdpsol():
+    try:
+        find_pomdpsol()
+        return True
+    except FileNotFoundError:
+        return False
 
 ROCKS = ((1, 1), (2, 0))
 
@@ -93,9 +101,38 @@ def test_rollout_avoids_stranding_better_than_greedy():
     assert r["failure_rate"] < g["failure_rate"]
 
 
-def test_sarsop_export_refuses_battery(tmp_path):
-    with pytest.raises(NotImplementedError):
-        write_pomdp(make_env(5), tmp_path / "m.pomdp")
+def test_sarsop_state_index_with_battery():
+    env = make_env(4)
+    idx = StateIndex(env)
+    assert idx.size == 5 * 9 * 4 + 1
+    assert sorted(idx.index(s) for s in idx.states()) == list(range(idx.size))
+    b0 = initial_distribution(env, idx)
+    assert b0.sum() == pytest.approx(1.0)
+    assert all(s.battery == 4 for s in idx.states() if b0[idx.index(s)] > 0)
+
+
+def test_sarsop_export_with_battery(tmp_path):
+    env = make_env(4)
+    idx = write_pomdp(env, tmp_path / "m.pomdp")
+    assert (tmp_path / "m.pomdp").read_text().count("T: ") == idx.size * env.num_actions
+
+
+def test_sarsop_export_refuses_huge_models(tmp_path):
+    with pytest.raises(ValueError):
+        write_pomdp(RockSampleEnv(RoverConfig(battery_capacity=25)), tmp_path / "m.pomdp")
+
+
+@pytest.mark.skipif(not _have_pomdpsol(), reason="pomdpsol not built (scripts/install_sarsop.sh)")
+def test_sarsop_with_battery_end_to_end(tmp_path):
+    """SARSOP's battery-constrained policy should never strand and its simulated return should match its value."""
+    env = make_env(6)
+    write_pomdp(env, tmp_path / "m.pomdp")
+    solve(tmp_path / "m.pomdp", tmp_path / "m.policy", timeout=30)
+    policy = SarsopPolicy.load(tmp_path / "m.policy", env)
+    v0 = policy.value(RockBelief.initial(env))
+    r = evaluate(env, policy, episodes=1000, seed=0)
+    assert r["failure_rate"] == 0.0
+    assert r["mean_return"] == pytest.approx(v0, abs=4 * r["stderr"] + 0.1)
 
 
 def test_battery_aware_greedy_matches_greedy_without_battery():

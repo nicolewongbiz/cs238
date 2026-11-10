@@ -45,7 +45,7 @@ Rules for code that consumes the model (sweeps, planners):
 
 - Sweep scripts read metrics generically from `evaluate()` / `EpisodeResult` fields, so new metrics (failure rate, energy, later hazard metrics) appear without code changes.
 - Planners use only `env.step`, `env.transition`, `RockBelief.update` and `candidate_actions`, so they work on extended models unchanged.
-- `write_pomdp` refuses configs with a battery (the state space blows up); SARSOP is the reference for the base model only.
+- `write_pomdp` exports the battery level as part of the state, which multiplies the state count by (capacity + 1), and refuses models above 50k states. So SARSOP with a battery runs only on small maps; `scripts/battery_sarsop.py` uses RockSample(5,4). On the 7x7 map SARSOP is the reference without a battery.
 - With the battery on, the baseline is `greedy-battery` (greedy plus a return-home rule), not battery-blind `greedy`, and the planners should use it as their base (`--base greedy-battery`).
 - Hazard fields will be added to this contract by Nicole before hazard work starts.
 
