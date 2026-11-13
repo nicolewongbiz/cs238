@@ -62,6 +62,46 @@ Paired against greedy on the same 200 episodes: rollout +0.44 ± 0.24, POMCP −
 - **POMCP** is short of simulations, not wrong: on a 5×5, 4-rock model it improves from 15.30 (1k sims) to 16.41 (5k) toward SARSOP's 17.34. Pure Python manages about 1000 sims in 0.3 s per decision; published POMCP results on RockSample(7,8) use far more.
 - Cost per episode (one core): rollout ≈ 0.9 s, POMCP ≈ 10 s. Use `--jobs 0` to spread episodes over all cores.
 
+## Battery results (RockSample(7,8) + battery, 200 episodes)
+
+Energy per action: move 1, check 1, sample 2. Running out before exiting strands the rover (−100, mission fails). Greedy uses about 33 energy per mission with no battery limit. `greedy-battery` is greedy plus a return-home rule: it only takes the greedy action if the battery left afterwards still covers the drive east. The planners below use it as their base policy (`--base greedy-battery`).
+
+| Capacity | Policy | Discounted return | Failed | Good / bad samples |
+|---|---|---|---|---|
+| 25 | greedy (battery-blind) | −16.44 ± 0.81 | 87% | 2.46 / 0.14 |
+| 25 | greedy-battery | 12.71 ± 0.30 | 0% | 1.96 / 0.13 |
+| 25 | rollout | **14.81 ± 0.35** | 0% | 2.08 / 0.04 |
+| 25 | rollout, CVaR 0.2 | 12.17 ± 0.27 | 0% | 1.52 / 0.03 |
+| 35 | greedy (battery-blind) | 7.93 ± 0.77 | 37% | 3.47 / 0.21 |
+| 35 | greedy-battery | 15.98 ± 0.36 | 0% | 3.25 / 0.19 |
+| 35 | rollout | **16.43 ± 0.37** | 0% | 3.35 / 0.10 |
+| 35 | rollout, CVaR 0.2 | 13.30 ± 0.26 | 0% | 2.65 / 0.02 |
+| 50 | greedy-battery (= greedy) | 16.78 ± 0.39 | 0% | 3.73 / 0.23 |
+| 50 | rollout | **17.22 ± 0.36** | 0% | 3.85 / 0.05 |
+| 50 | rollout, CVaR 0.2 | 13.69 ± 0.27 | 0% | 3.55 / 0.01 |
+
+- **A return-home rule removes all battery risk.** Energy use is deterministic and the battery is observed, so `greedy-battery` never strands. Battery-blind greedy is a strawman; compare against `greedy-battery`.
+- **Rollout's advantage grows as the budget tightens:** +2.1 over greedy-battery at capacity 25, about +0.45 at 35 and 50. It spends a scarce budget better (fewer wasted checks, almost no bad samples).
+- **CVaR only costs here.** With no failure mode left, it just acts pessimistically about rock values and samples less. Risk-aware scoring needs real randomness in outcomes, which terrain hazards (stochastic delays, energy cost, immobilization) will add.
+
+### Battery vs SARSOP on a small map (RockSample(5,4) + battery, 1000 episodes)
+
+SARSOP can only handle the battery on a small map, because the battery level multiplies the state count (10,001 states at capacity 24). `scripts/battery_sarsop.py` re-solves SARSOP for each capacity (120 s) and runs all policies on the same missions. Driving home from the start costs 5 energy; greedy uses about 17 with no battery limit. SARSOP converged (bound gap < 0.001) at every capacity except 24 (gap 0.47), so it is effectively optimal here.
+
+| Capacity | greedy | greedy-battery | rollout | rollout, CVaR 0.2 | SARSOP |
+|---|---|---|---|---|---|
+| 8 | −64.53 (100% fail) | 6.98 | **8.15** | **8.15** | **8.15** |
+| 12 | −39.89 (83% fail) | 10.34 | 12.85 | 11.98 | **13.59** |
+| 16 | −11.83 (50% fail) | 13.29 | 14.36 | 12.84 | **16.24** |
+| 24 | 13.93 (5% fail) | 15.92 | 15.77 | 13.94 | **17.37** |
+| none | 16.06 | 16.06 | 15.88 | 13.99 | **17.45** |
+
+Standard errors are 0.1–0.3 (0.8 for failing greedy). All policies except battery-blind greedy have 0% failures.
+
+- **A tight budget is where planning pays off.** At capacity 16, SARSOP keeps 93% of its unconstrained value (16.24 vs 17.45) while greedy-battery loses about 3 points. Rollout closes 77% of the greedy-battery → optimal gap at capacity 12, 36% at 16, and none when the budget is loose.
+- **At capacity 8 no science is affordable.** The optimal plan is to drive straight home (8.15 = 10·0.95⁴); rollout finds it, while greedy-battery wastes steps checking first.
+- **CVaR never helps, as on the big map,** because battery outcomes are deterministic. That is the motivation for stochastic terrain hazards.
+
 ## Roadmap
 
 - [x] RockSample environment, exact belief, baseline policies, evaluation harness
@@ -70,7 +110,7 @@ Paired against greedy on the same 200 episodes: rollout +0.44 ± 0.24, POMCP −
 - [x] Build SARSOP and record its value on RockSample(7,8) as the near-optimal reference
 - [x] Rollout-lookahead planner with CVaR risk scoring in `rover/planners.py`
 - [x] POMCP planner (needs more simulations or speed to beat greedy)
-- [ ] Battery budget: per-action energy use, failure if depleted before returning
+- [x] Battery budget: per-action energy use, failure if depleted before returning
 - [ ] Terrain hazards: hidden hazard classes per cell, stochastic delay or immobilization, noisy hazard scans
 - [ ] Experiments: sweeps over sensor noise (`sensor_half_eff_dist`) and hazard probability, science–safety tradeoff plots
 - [ ] *Extension:* continuous dynamics with a CBF safety filter

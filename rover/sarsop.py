@@ -5,9 +5,11 @@ Pipeline:
   2. `solve(...)` runs the `pomdpsol` binary (see scripts/install_sarsop.sh).
   3. `SarsopPolicy.load(path, env)` reads the alpha vectors and acts greedily on them.
 
-Only the plain RockSample model is exported (|S| = n^2 * 2^k + 1). Adding
-battery levels or hazard maps multiplies |S|, so keep extensions small or use
-SARSOP only on the base model as a reference point.
+States are (cell, rock values) plus, with a battery, the battery level:
+|S| = (capacity + 1) * n^2 * 2^k + 1. The battery multiplies |S| (and every
+alpha vector's length), so with a battery use a small map, e.g. 5x5 with 4
+rocks; `write_pomdp` refuses models above `MAX_STATES`. Hazard maps are not
+exported.
 """
 
 from __future__ import annotations
@@ -25,35 +27,45 @@ from .belief import RockBelief
 from .env import NUM_BASIC_ACTIONS, NUM_OBS, RockSampleEnv, State
 from .policies import Policy
 
+MAX_STATES = 50_000  # beyond this the .pomdp file and alpha vectors get impractical
+
 DEFAULT_POMDPSOL = Path(__file__).resolve().parent.parent / "third_party" / "sarsop" / "src" / "pomdpsol"
 
 
 class StateIndex:
-    """Bijection between `State`s and integers: (cell * 2^k + rock_bits), terminal last."""
+    """Bijection between `State`s and integers, terminal last:
+    ((battery * n^2 + cell) * 2^k + rock_bits). Without a battery, battery = 0
+    and this is (cell * 2^k + rock_bits), matching the published RockSample file."""
 
     def __init__(self, env: RockSampleEnv):
         self.n, self.k = env.cfg.grid_size, env.cfg.num_rocks
         self.num_configs = 2**self.k
-        self.terminal = self.n * self.n * self.num_configs
+        cap = env.cfg.battery_capacity
+        self.battery_levels = 1 if cap is None else cap + 1
+        self.terminal = self.battery_levels * self.n * self.n * self.num_configs
         self.size = self.terminal + 1
+
+    def block(self, pos: tuple[int, int], battery: int = 0) -> int:
+        """Index of the first of the 2^k states at this cell and battery level."""
+        return (battery * self.n * self.n + pos[1] * self.n + pos[0]) * self.num_configs
 
     def index(self, s: State) -> int:
         if s.terminal:
             return self.terminal
         bits = sum(1 << i for i, good in enumerate(s.rocks) if good)
-        return (s.pos[1] * self.n + s.pos[0]) * self.num_configs + bits
+        return self.block(s.pos, s.battery) + bits
 
     def states(self):
-        for y, x in itertools.product(range(self.n), range(self.n)):
+        for battery, y, x in itertools.product(range(self.battery_levels), range(self.n), range(self.n)):
             for bits in range(self.num_configs):
-                yield State((x, y), tuple(bool(bits >> i & 1) for i in range(self.k)))
+                yield State((x, y), tuple(bool(bits >> i & 1) for i in range(self.k)), battery=battery)
         yield State((0, 0), (False,) * self.k, terminal=True)
 
 
 def initial_distribution(env: RockSampleEnv, idx: StateIndex) -> np.ndarray:
     b = np.zeros(idx.size)
     belief = RockBelief.initial(env)
-    base = idx.index(State(belief.pos, (False,) * idx.k))
+    base = idx.block(belief.pos, belief.battery)
     b[base : base + idx.num_configs] = config_probs(belief.p_good)
     return b
 
@@ -67,6 +79,11 @@ def config_probs(p_good: np.ndarray) -> np.ndarray:
 
 def write_pomdp(env: RockSampleEnv, path: str | os.PathLike) -> StateIndex:
     idx = StateIndex(env)
+    if idx.size > MAX_STATES:
+        raise ValueError(
+            f"{idx.size} states is too many for SARSOP (limit {MAX_STATES}); "
+            "use a smaller map or battery capacity"
+        )
     lines = [
         f"discount: {env.cfg.discount}",
         "values: reward",
@@ -84,11 +101,12 @@ def write_pomdp(env: RockSampleEnv, path: str | os.PathLike) -> StateIndex:
             lines.append(f"T: {a} : {si} : {spi} 1.0")
             if r != 0:
                 lines.append(f"R: {a} : {si} : * : * {r:.10g}")
-            if a < NUM_BASIC_ACTIONS:
-                continue
-            for o, p in enumerate(env.observation_probs(a, sp)):
+        # O(a, s', o) must be defined for every s', including states no check
+        # action leads to (e.g. a full battery), so write it per state, not per transition.
+        for a in range(NUM_BASIC_ACTIONS, env.num_actions):
+            for o, p in enumerate(env.observation_probs(a, s)):
                 if p > 0:
-                    lines.append(f"O: {a} : {spi} : {o} {p:.10g}")
+                    lines.append(f"O: {a} : {si} : {o} {p:.10g}")
     for a in range(NUM_BASIC_ACTIONS):
         lines.append(f"O: {a} : * : 0 1.0")
     Path(path).write_text("\n".join(lines) + "\n")
@@ -154,7 +172,7 @@ class SarsopPolicy(Policy):
     def _values(self, belief: RockBelief) -> np.ndarray:
         if belief.terminal:
             return self.alphas[:, self.idx.terminal]
-        base = self.idx.index(State(belief.pos, (False,) * self.idx.k))
+        base = self.idx.block(belief.pos, belief.battery)
         block = self.alphas[:, base : base + self.idx.num_configs]
         return block @ config_probs(belief.p_good)
 

@@ -1,6 +1,12 @@
 from .belief import RockBelief
 from .env import RockSampleEnv, RoverConfig, State, random_layout
-from .policies import GreedyExpectedValuePolicy, NearestTargetPolicy, Policy, RandomPolicy
+from .policies import (
+    BatteryAwareGreedyPolicy,
+    GreedyExpectedValuePolicy,
+    NearestTargetPolicy,
+    Policy,
+    RandomPolicy,
+)
 from .simulate import evaluate, run_episode
 
 __all__ = [
@@ -13,6 +19,7 @@ __all__ = [
     "RandomPolicy",
     "NearestTargetPolicy",
     "GreedyExpectedValuePolicy",
+    "BatteryAwareGreedyPolicy",
     "evaluate",
     "run_episode",
 ]

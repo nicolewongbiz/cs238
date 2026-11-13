@@ -27,6 +27,8 @@ class EpisodeResult:
     good_samples: int
     bad_samples: int
     returned: bool  # exited the grid (returned to base)
+    failed: bool = False  # mission failure: stranded with a flat battery
+    energy_used: int = 0
 
 
 def run_episode(
@@ -38,19 +40,23 @@ def run_episode(
     s = env.sample_initial_state(rng)
     b = RockBelief.initial(env)
     policy.reset(env, policy_rng)
-    disc, total, good, bad, t, returned = 0.0, 0.0, 0, 0, 0, False
+    disc, total, good, bad, t, returned, failed, energy = 0.0, 0.0, 0, 0, 0, False, False, 0
     while not s.terminal and t < env.cfg.max_steps:
         a = policy.act(b)
-        if a == SAMPLE and (i := env.rock_at(s.pos)) is not None:
-            good += s.rocks[i]
-            bad += not s.rocks[i]
+        if env.is_stranded(s, a):
+            failed = True
+        else:
+            energy += env.energy_cost(a)
+            if a == SAMPLE and (i := env.rock_at(s.pos)) is not None:
+                good += s.rocks[i]
+                bad += not s.rocks[i]
         returned |= env.is_exit(s, a)
         sp, o, r = env.step(s, a, rng)
         disc += env.cfg.discount**t * r
         total += r
         b = b.update(env, a, o)
         s, t = sp, t + 1
-    return EpisodeResult(disc, total, t, good, bad, returned)
+    return EpisodeResult(disc, total, t, good, bad, returned, failed, energy)
 
 
 def _run_episodes(env: RockSampleEnv, policy: Policy, seed: int, episodes: range) -> list[EpisodeResult]:
@@ -83,4 +89,6 @@ def evaluate(
         "good_samples": np.mean([r.good_samples for r in results]),
         "bad_samples": np.mean([r.bad_samples for r in results]),
         "steps": np.mean([r.steps for r in results]),
+        "failure_rate": np.mean([r.failed for r in results]),
+        "energy_used": np.mean([r.energy_used for r in results]),
     }
